@@ -1,6 +1,6 @@
 {
   "name": "codex-skillstate",
-  "version": "0.2.0-experimental",
+  "version": "0.2.1-experimental",
   "description": "A bounded, stateless controller loop for Codex CLI.",
   "type": "module",
   "bin": {
@@ -20,7 +20,6 @@
     "schemas",
     "src",
     "skills",
-    "hooks",
     "scripts",
     ".codex-plugin",
     "README.md",

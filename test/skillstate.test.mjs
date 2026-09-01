@@ -25,7 +25,7 @@ async function fixture() {
 }
 test.after(async () => { delete process.env.XDG_STATE_HOME; delete process.env.SKILLSTATE_FAKE_LOG; delete process.env.SKILLSTATE_FAKE_MODE; await Promise.all(cleanups.map(item => rm(item, { recursive: true, force: true }))); });
 
-test('01 exposes the experimental version', () => assert.equal(VERSION, '0.2.0-experimental'));
+test('01 exposes the experimental version', () => assert.equal(VERSION, '0.2.1-experimental'));
 
 test('02 parses CLI flags', () => assert.deepEqual(parseArgs(['run', '--mode', 'strict', '--resume']), { command: 'run', options: { mode: 'strict', resume: true } }));
 

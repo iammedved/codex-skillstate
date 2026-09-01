@@ -1,11 +1,11 @@
 ---
 name: skillstate-runtime
-description: "Use the installed Skillstate runtime for long, multi-stage Codex work that benefits from fresh controller or worker contexts, bounded state, audit receipts, and explicit authority boundaries. Do not use for greetings, one-step answers, or ordinary small edits."
+description: "Record passive, bounded checkpoints for a Pinmind-controlled long task. Invoke only when Pinmind selects durable state; Skillstate must not become a second workflow controller."
 ---
 
 # Skillstate Runtime
 
-For a long or interruption-prone task, use the external `skillstate` executable rather than trying to make the parent chat history into durable state. Start with `skillstate doctor --workspace <path>` and use the documented CLI commands. The plugin may select this Skill implicitly for multi-stage prompts; do not require the user to name it. Return only the verified outcome, current state, and blockers to the parent chat.
+Pinmind is the sole workflow controller. When Pinmind selects durable state, start with `skillstate doctor --workspace <path>`, then record the already-validated Pinmind state with `skillstate checkpoint --workspace <path> --pinmind-run <run-id>` at clean phase boundaries. Skillstate stores hashes and bounded metadata; it does not route the task, decide the next action, or spawn a second controller.
 
 ## Modes
 
@@ -23,10 +23,9 @@ Do not replay an interrupted action automatically. Inspect the working tree and 
 ## Useful commands
 
 ```bash
-skillstate run --workspace <path> --task-file <file> --mode hybrid --sandbox workspace-write
-skillstate run --workspace <path> --resume
-skillstate show --workspace <path>
+skillstate checkpoint --workspace <path> --pinmind-run <run-id>
+skillstate checkpoint-show --workspace <path>
 skillstate audit-verify --workspace <path>
 ```
 
-Use `--controller pinmind --pinmind-path <path>` only when a verified local Pinmind installation is intentionally in scope. A runtime audit receipt is local evidence, not proof that a host action occurred unless an authoritative receipt says so.
+The legacy `skillstate run` controller remains experimental and manual; never use it inside a Pinmind-controlled task. A checkpoint is local evidence, not proof that a host action occurred unless an authoritative receipt says so.

@@ -176,7 +176,14 @@ function isPostChangeVerification(action, result) {
 function receiptFor(state, action, result, started, response, status = 'ok') {
   const promptChars = JSON.stringify({ state, result }).length;
   return { revision: state.revision, action: action.type, status, at: new Date().toISOString(), durationMs: Date.now() - started,
-    observationSha256: sha256(result), tokenMetrics: response._tokenMetrics || { promptChars, estimatedInputTokens: Math.ceil(promptChars / 4), outputTokens: null } };
+    actionSha256: sha256(action), observationSha256: sha256(result), tokenMetrics: response._tokenMetrics || { promptChars, estimatedInputTokens: Math.ceil(promptChars / 4), outputTokens: null } };
+}
+
+function repeatsReadOnlyWithoutProgress(receipts, receipt) {
+  if (!['read_file', 'search', 'git_diff', 'snapshot'].includes(receipt.action)) return false;
+  const sinceMutation = receipts.slice().reverse().findIndex(item => item.action === 'apply_patch');
+  const recent = sinceMutation < 0 ? receipts : receipts.slice(receipts.length - sinceMutation);
+  return recent.filter(item => item.status === 'ok' && item.actionSha256 === receipt.actionSha256 && item.observationSha256 === receipt.observationSha256).length >= 2;
 }
 
 async function pauseFailedAction({ workspace, state, action, result, started, response, operation }) {
@@ -265,6 +272,13 @@ export async function run(options) {
       else if (state.phase === 'change' && isPostChangeVerification(action, result)) state.phase = 'verify';
       const receipt = receiptFor(state, action, result, started, response);
       state.receipts = [...state.receipts.slice(-99), receipt];
+      if (repeatsReadOnlyWithoutProgress(state.receipts.slice(0, -1), receipt)) {
+        state.lifecycle = 'paused';
+        state.blockers = [...state.blockers.slice(-49), 'No progress: the same read-only action returned the same result three times.'];
+        await saveState(workspace, state);
+        await appendAudit(workspace, 'paused', { runId: state.runId, reason: 'no_progress', action: action.type });
+        return { state, observation: result, steps: step + 1, reason: 'no_progress' };
+      }
       if (action.type === 'finish') { state.lifecycle = 'finished'; state.finalResult = result.result; }
       if (action.type === 'ask') state.lifecycle = 'awaiting_user';
       await saveState(workspace, state);

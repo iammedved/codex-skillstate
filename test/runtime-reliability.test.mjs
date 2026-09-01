@@ -7,6 +7,7 @@ import test from 'node:test';
 import { appendAudit, auditHeadPath, recoverAuditLock, runDir, verifyAudit } from '../src/audit.mjs';
 import { acquireWorkspaceLock, loadState, operationPath, recover, releaseWorkspaceLock, run, saveState } from '../src/runtime.mjs';
 import { createState } from '../src/state.mjs';
+import { pinmindAdapter } from '../src/pinmind.mjs';
 
 const cleanups = [];
 async function fixture() {
@@ -28,6 +29,20 @@ test('writer lock rejects a second owner and releases cleanly', async () => {
   await assert.rejects(acquireWorkspaceLock(workspace), /workspace is busy/);
   await releaseWorkspaceLock(first);
   await releaseWorkspaceLock(await acquireWorkspaceLock(workspace));
+});
+
+test('Pinmind adapter routes in-process without a nested Node subprocess', async () => {
+  const { workspace } = await fixture();
+  const pinmind = path.join(workspace, 'pinmind');
+  await mkdir(path.join(pinmind, 'scripts', 'lib'), { recursive: true });
+  await mkdir(path.join(pinmind, 'references'));
+  await writeFile(path.join(pinmind, 'SKILL.md'), 'test skill');
+  await writeFile(path.join(pinmind, 'scripts', 'pinmind.mjs'), 'test cli');
+  await writeFile(path.join(pinmind, 'scripts', 'lib', 'route.mjs'), `export const routeTask = () => ({ route: 'audit', clarity: 'clear', executionSpan: 'local', risk: 'low', needsHumanConfirmation: false });`);
+  await writeFile(path.join(pinmind, 'references', 'route.md'), 'route');
+  const result = await pinmindAdapter({ pinmindPath: pinmind, task: 'audit' });
+  assert.equal(result.route, 'audit');
+  assert.equal(result.frozen.length, 4);
 });
 
 test('recovery only removes a confirmed stale workspace lock', async () => {
@@ -137,6 +152,26 @@ writeFileSync(1, JSON.stringify({ type: 'item.completed', item: { type: 'agent_m
   await chmod(controller, 0o755);
   const result = await run({ workspace, task: 'change', mode: 'hybrid', sandbox: 'workspace-write', maxSteps: 4, codex: controller });
   assert.equal(result.state.phase, 'verify'); assert.equal(result.state.lifecycle, 'finished');
+});
+
+test('repeated identical reads pause before the step limit', async () => {
+  const { workspace } = await fixture();
+  await writeFile(path.join(workspace, 'a.txt'), 'same a\n');
+  await writeFile(path.join(workspace, 'b.txt'), 'same b\n');
+  const controller = path.join(workspace, 'loop-controller.mjs');
+  await writeFile(controller, `#!/usr/bin/env node
+import { writeFileSync } from 'node:fs';
+const prompt = process.argv.at(-1);
+const sha = prompt.match(/Current state SHA-256: ([a-f0-9]{64})/)?.[1];
+const revision = Number(prompt.match(/\\"revision\\":(\\d+)/)?.[1] ?? 0);
+const action = { type: 'read_file', path: revision % 2 ? 'b.txt' : 'a.txt', maxBytes: 64 };
+writeFileSync(1, JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: JSON.stringify({ baseStateSha256: sha, state_patch: {}, action }) } }) + '\\n');`);
+  await chmod(controller, 0o755);
+  const result = await run({ workspace, task: 'inspect', mode: 'strict', sandbox: 'read-only', maxSteps: 10, codex: controller });
+  assert.equal(result.reason, 'no_progress');
+  assert.equal(result.steps, 5);
+  assert.equal(result.state.lifecycle, 'paused');
+  assert.match(result.state.blockers.at(-1), /No progress/);
 });
 
 test('resume continues an awaiting run instead of replacing its run id', async () => {
