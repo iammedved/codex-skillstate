@@ -12,10 +12,10 @@ const execFileAsync = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const install = path.join(root, 'scripts', 'install-personal.mjs');
 
-test('release metadata uses one 0.2.1-experimental version', async () => {
+test('release metadata uses one 0.2.2-experimental version', async () => {
   const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
   const plugin = JSON.parse(await readFile(path.join(root, '.codex-plugin', 'plugin.json'), 'utf8'));
-  assert.equal(VERSION, '0.2.1-experimental');
+  assert.equal(VERSION, '0.2.2-experimental');
   assert.equal(packageJson.version, VERSION);
   assert.equal(plugin.version, VERSION);
 });

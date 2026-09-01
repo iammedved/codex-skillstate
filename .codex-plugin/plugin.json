@@ -1,6 +1,6 @@
 {
   "name": "codex-skillstate",
-  "version": "0.2.1-experimental",
+  "version": "0.2.2-experimental",
   "description": "Passive bounded checkpoints for long tasks controlled by Pinmind.",
   "author": {
     "name": "Codex Skillstate"

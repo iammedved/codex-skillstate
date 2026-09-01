@@ -1,15 +1,51 @@
-import { lstat, mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import { appendFile, lstat, mkdir, open, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
-import { appendAudit, runDir } from './audit.mjs';
-import { acquireWorkspaceLock, releaseWorkspaceLock } from './runtime.mjs';
-import { sha256 } from './util.mjs';
+import { sha256, stableJson } from './util.mjs';
 
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_STATE_BYTES = 128 * 1024;
 
-export const checkpointPath = workspace => path.join(runDir(workspace), 'pinmind-checkpoint.json');
+const checkpointDir = workspace => path.join(workspace, '.pinmind', 'skillstate');
+export const checkpointPath = workspace => path.join(checkpointDir(workspace), 'checkpoint.json');
+export const checkpointAuditPath = workspace => path.join(checkpointDir(workspace), 'audit.jsonl');
+
+async function withCheckpointLock(workspace, work) {
+  const directory = checkpointDir(workspace);
+  await mkdir(directory, { recursive: true });
+  const [root, resolved, stat] = await Promise.all([realpath(workspace), realpath(directory), lstat(directory)]);
+  if (!stat.isDirectory() || path.relative(root, resolved).startsWith('..')) throw new Error('Pinmind Skillstate directory escapes the workspace');
+  const lock = path.join(resolved, 'checkpoint.lock');
+  let handle;
+  try { handle = await open(lock, 'wx', 0o600); }
+  catch (error) { if (error.code === 'EEXIST') throw new Error('Pinmind checkpoint is busy'); throw error; }
+  try { return await work(); }
+  finally { await handle.close(); await unlink(lock).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
+}
+
+async function readCheckpointAudit(workspace) {
+  let lines;
+  try { lines = (await readFile(checkpointAuditPath(workspace), 'utf8')).trim().split('\n').filter(Boolean); }
+  catch (error) { if (error.code === 'ENOENT') return { ok: true, entries: 0, hash: '0'.repeat(64) }; throw error; }
+  let previousHash = '0'.repeat(64);
+  for (let index = 0; index < lines.length; index++) {
+    let entry;
+    try { entry = JSON.parse(lines[index]); } catch { return { ok: false, index, error: 'invalid JSONL' }; }
+    const { hash, ...unsigned } = entry;
+    if (entry.previousHash !== previousHash || hash !== sha256(stableJson(unsigned))) return { ok: false, index, error: 'hash-chain mismatch' };
+    previousHash = hash;
+  }
+  return { ok: true, entries: lines.length, hash: previousHash };
+}
+
+async function appendCheckpointAudit(workspace, data) {
+  const current = await readCheckpointAudit(workspace);
+  if (!current.ok) throw new Error(`Pinmind checkpoint audit is invalid at entry ${current.index}`);
+  const entry = { at: new Date().toISOString(), event: 'pinmind_checkpoint', data, previousHash: current.hash };
+  entry.hash = sha256(stableJson(entry));
+  await appendFile(checkpointAuditPath(workspace), `${JSON.stringify(entry)}\n`, { mode: 0o600 });
+}
 
 async function readContainedFile(workspace, relative, { optional = false } = {}) {
   const file = path.join(workspace, relative);
@@ -37,8 +73,7 @@ async function readLatest(workspace) {
 
 export async function checkpointPinmind(workspace, runId) {
   if (!RUN_ID.test(runId ?? '')) throw new Error('--pinmind-run must be a safe run id');
-  const lock = await acquireWorkspaceLock(workspace);
-  try {
+  return withCheckpointLock(workspace, async () => {
     const relativeState = path.join('.pinmind', 'runs', runId, 'state.json');
     const [stateFile, activeFile] = await Promise.all([
       readContainedFile(workspace, relativeState),
@@ -67,10 +102,12 @@ export async function checkpointPinmind(workspace, runId) {
       recordedAt: new Date().toISOString(),
     };
     await atomicWrite(checkpointPath(workspace), checkpoint);
-    await appendAudit(workspace, 'pinmind_checkpoint', { runId, phase: checkpoint.phase, stateSha256: source.stateSha256 });
+    await appendCheckpointAudit(workspace, { runId, phase: checkpoint.phase, stateSha256: source.stateSha256 });
     return { ...checkpoint, unchanged: false };
-  } finally { await releaseWorkspaceLock(lock); }
+  });
 }
+
+export const verifyPinmindCheckpoint = workspace => readCheckpointAudit(workspace);
 
 export async function showPinmindCheckpoint(workspace) {
   const checkpoint = await readLatest(workspace);
