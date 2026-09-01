@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 
-export const VERSION = '0.1.0-experimental';
+export const VERSION = '0.2.0-experimental';
 export const sha256 = value => createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : stableJson(value)).digest('hex');
 export const stableJson = value => JSON.stringify(sort(value));
 export const runId = () => randomUUID();

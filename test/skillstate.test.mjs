@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { executeAction, validateAction } from '../src/actions.mjs';
 import { appendAudit, auditPath, verifyAudit } from '../src/audit.mjs';
-import { controllerResponseFromJsonl, rejectControllerJsonl, tokenMetricsFromJsonl } from '../src/controller.mjs';
+import { controllerPrompt, controllerResponseFromJsonl, rejectControllerJsonl, tokenMetricsFromJsonl } from '../src/controller.mjs';
 import { pendingPath, quarantinePath, recover, run } from '../src/runtime.mjs';
 import { applyStatePatch, createState, mergePatch, validateState } from '../src/state.mjs';
 import { sha256, VERSION, workspacePath } from '../src/util.mjs';
@@ -25,9 +25,9 @@ async function fixture() {
 }
 test.after(async () => { delete process.env.XDG_STATE_HOME; delete process.env.SKILLSTATE_FAKE_LOG; delete process.env.SKILLSTATE_FAKE_MODE; await Promise.all(cleanups.map(item => rm(item, { recursive: true, force: true }))); });
 
-test('01 exposes the experimental version', () => assert.equal(VERSION, '0.1.0-experimental'));
+test('01 exposes the experimental version', () => assert.equal(VERSION, '0.2.0-experimental'));
 
-test('02 parses CLI flags', () => assert.deepEqual(parseArgs(['run', '--mode', 'strict', '--confirm']), { command: 'run', options: { mode: 'strict', confirm: true } }));
+test('02 parses CLI flags', () => assert.deepEqual(parseArgs(['run', '--mode', 'strict', '--resume']), { command: 'run', options: { mode: 'strict', resume: true } }));
 
 test('03 creates a bounded initial state', () => {
   const state = createState({ objective: 'inspect' });
@@ -78,12 +78,23 @@ test('11 executes a bounded local read action', async () => {
   assert.equal(result.content, 'abc'); assert.equal(result.truncated, true);
 });
 
+test('11b verifies the expected file SHA immediately before returning it', async () => {
+  const { workspace } = await fixture(); await writeFile(path.join(workspace, 'a.txt'), 'abcdef');
+  const action = { type: 'read_file', path: 'a.txt', expectedSha256: sha256('abcdef') };
+  const result = await executeAction({ action, workspace, mode: 'strict', authority: { localMutation: false } });
+  assert.equal(result.content, 'abcdef');
+  await assert.rejects(executeAction({ action: { ...action, expectedSha256: '0'.repeat(64) }, workspace, mode: 'strict', authority: { localMutation: false } }), /SHA-256 mismatch/);
+});
+
 test('12 rejects worker actions in strict mode', () => assert.throws(() => validateAction({ type: 'worker', task: 'inspect' }, { mode: 'strict', authority: { localMutation: true } }), /hybrid/));
 
 test('13 rejects mutation without authority', () => assert.throws(() => validateAction({ type: 'apply_patch', patch: 'diff' }, { mode: 'hybrid', authority: { localMutation: false } }), /not authorized/));
 
-test('14 rejects every external-effect worker class', () => {
-  for (const word of ['push', 'PR', 'deploy', 'publish', 'message', 'payment', 'production', 'credential']) assert.throws(() => validateAction({ type: 'worker', task: `${word} now` }, { mode: 'hybrid', authority: { localMutation: true } }), /external-effect/);
+test('14 allows any bounded worker wording only with explicit external-effects denial', () => {
+  for (const word of ['push', 'PR', 'deploy', 'publish', 'message', 'payment', 'production', 'credential']) {
+    assert.deepEqual(validateAction({ type: 'worker', task: `${word} now` }, { mode: 'hybrid', authority: { localMutation: false, externalEffects: false } }), { type: 'worker', task: `${word} now` });
+  }
+  assert.throws(() => validateAction({ type: 'worker', task: 'inspect' }, { mode: 'hybrid', authority: { localMutation: false } }), /external-effect/);
 });
 
 test('15 rejects patches aimed at Git metadata', async () => {
@@ -128,4 +139,11 @@ test('22 runs two fresh strict controllers without forwarding private output', a
   const result = await run({ workspace, task: 'Inspect example.txt without changing anything.', mode: 'strict', sandbox: 'read-only', controller: 'codex', maxSteps: 2, codex: fakeCodex });
   const calls = (await readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
   assert.equal(result.state.lifecycle, 'finished'); assert.equal(calls.length, 2); assert.notEqual(calls[0].pid, calls[1].pid); assert.equal(calls[1].prompt.includes('DO_NOT_FORWARD_42'), false); assert.deepEqual(result.state.receipts[0].tokenMetrics, { inputTokens: 120, cachedInputTokens: 20, outputTokens: 30 });
+});
+
+test('23 projects controller state without forwarding historic receipts', () => {
+  const state = { ...createState({ objective: 'inspect' }), receipts: [{ secret: 'DO_NOT_FORWARD_RECEIPT' }] };
+  const prompt = controllerPrompt({ state, observation: { type: 'start' }, policy: {}, mode: 'strict' });
+  assert.match(prompt, new RegExp(sha256(state)));
+  assert.equal(prompt.includes('DO_NOT_FORWARD_RECEIPT'), false);
 });

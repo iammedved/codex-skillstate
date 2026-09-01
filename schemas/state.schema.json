@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["runId", "protocol", "revision", "authority", "lifecycle", "frozen", "objective", "facts", "decisions", "files", "verification", "blockers", "failedApproaches", "receipts"],
+  "required": ["runId", "protocol", "revision", "authority", "lifecycle", "phase", "constraints", "frozen", "objective", "facts", "decisions", "files", "verification", "blockers", "failedApproaches", "receipts"],
   "properties": {
     "runId": { "type": "string", "minLength": 1 },
-    "protocol": { "const": "codex-skillstate/0.1" },
+    "protocol": { "const": "codex-skillstate/0.2" },
     "revision": { "type": "integer", "minimum": 0 },
     "authority": {
       "type": "object",
@@ -17,7 +17,12 @@
       }
     },
     "lifecycle": { "enum": ["active", "awaiting_user", "finished", "paused"] },
-    "frozen": { "type": "array", "maxItems": 32 },
+    "phase": { "enum": ["inspect", "ready_to_change", "change", "verify"] },
+    "constraints": { "type": "array", "maxItems": 20, "items": { "type": "string", "minLength": 1, "maxLength": 1000 } },
+    "frozen": {
+      "type": "array", "maxItems": 32,
+      "items": { "type": "object", "additionalProperties": true, "required": ["path", "sha256"], "properties": { "path": { "type": "string" }, "sha256": { "type": "string" } } }
+    },
     "objective": { "type": "string", "minLength": 1, "maxLength": 12000 },
     "facts": { "$ref": "#/$defs/section" },
     "decisions": { "$ref": "#/$defs/section" },
@@ -27,7 +32,10 @@
     "failedApproaches": { "$ref": "#/$defs/section" },
     "nextAction": { "type": ["string", "null"], "maxLength": 24000 },
     "finalResult": { "type": ["string", "null"], "maxLength": 24000 },
-    "receipts": { "type": "array", "maxItems": 100 }
+    "receipts": {
+      "type": "array", "maxItems": 100,
+      "items": { "type": "object", "additionalProperties": true, "required": ["revision", "action", "at"], "properties": { "revision": { "type": "integer", "minimum": 0 }, "action": { "type": "string" }, "at": { "type": "string" }, "status": { "enum": ["ok", "failed"] } } }
+    }
   },
   "$defs": {
     "section": { "type": "array", "items": { "type": "string", "maxLength": 4000 }, "maxItems": 50 }

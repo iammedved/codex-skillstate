@@ -9,7 +9,7 @@ const usage = `skillstate ${VERSION}
 Usage:
   skillstate --version | version
   skillstate doctor [--workspace PATH] [--controller codex|pinmind] [--pinmind-path PATH]
-  skillstate run --workspace PATH (--task TEXT | --task-file FILE) [--mode strict|hybrid] [--sandbox read-only|workspace-write] [--controller codex|pinmind] [--pinmind-path PATH] [--max-steps N]
+  skillstate run --workspace PATH (--task TEXT | --task-file FILE | --resume) [--mode strict|hybrid] [--sandbox read-only|workspace-write] [--controller codex|pinmind] [--pinmind-path PATH] [--max-steps N]
   skillstate show --workspace PATH
   skillstate audit-verify --workspace PATH
   skillstate recover --workspace PATH --confirm`;
@@ -20,7 +20,7 @@ export function parseArgs(argv) {
     const token = rest[index];
     if (!token.startsWith('--')) throw new Error(`unexpected argument: ${token}`);
     const key = token.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-    if (key === 'confirm') { options.confirm = true; continue; }
+    if (key === 'confirm' || key === 'resume') { options[key] = true; continue; }
     const value = rest[++index]; if (value === undefined || value.startsWith('--')) throw new Error(`missing value for ${token}`);
     options[key] = value;
   }
@@ -38,10 +38,11 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'recover') return recover(workspace, Boolean(options.confirm));
   if (command === 'run') {
     if (options.task && options.taskFile) throw new Error('use either --task or --task-file');
+    if (options.resume && (options.task || options.taskFile)) throw new Error('--resume cannot be combined with --task or --task-file');
     const task = options.task || (options.taskFile && await readFile(options.taskFile, 'utf8'));
     const maxSteps = options.maxSteps === undefined ? undefined : Number(options.maxSteps);
     if (maxSteps !== undefined && (!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 100)) throw new Error('--max-steps must be 1..100');
-    return run({ workspace, task, mode: options.mode, sandbox: options.sandbox, controller: options.controller, pinmindPath: options.pinmindPath, maxSteps });
+    return run({ workspace, task, resume: Boolean(options.resume), mode: options.mode, sandbox: options.sandbox, controller: options.controller, pinmindPath: options.pinmindPath, maxSteps });
   }
   throw new Error(`unknown command: ${command}`);
 }

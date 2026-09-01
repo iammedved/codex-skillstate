@@ -1,0 +1,6 @@
+interface:
+  display_name: "Skillstate Runtime"
+  short_description: "Bounded runtime for long multi-stage Codex work"
+  default_prompt: "For long, interruption-prone multi-stage work, automatically use $skillstate-runtime to run the bounded local workflow."
+policy:
+  allow_implicit_invocation: true

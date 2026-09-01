@@ -22,17 +22,18 @@
     },
     "action": {
       "type": "object",
-      "required": ["type", "path", "query", "maxBytes", "patch", "question", "result", "task"],
+      "required": ["type", "path", "query", "maxBytes", "patch", "question", "result", "task", "expectedSha256"],
       "additionalProperties": false,
       "properties": {
         "type": { "enum": ["read_file", "search", "git_diff", "snapshot", "apply_patch", "ask", "finish", "worker"] },
-        "path": { "type": ["string", "null"] },
-        "query": { "type": ["string", "null"] },
+        "path": { "type": ["string", "null"], "maxLength": 4096 },
+        "query": { "type": ["string", "null"], "maxLength": 256 },
         "maxBytes": { "type": ["integer", "null"], "minimum": 1, "maximum": 65536 },
-        "patch": { "type": ["string", "null"] },
-        "question": { "type": ["string", "null"] },
-        "result": { "type": ["string", "null"] },
-        "task": { "type": ["string", "null"] }
+        "patch": { "type": ["string", "null"], "maxLength": 200000 },
+        "question": { "type": ["string", "null"], "maxLength": 12000 },
+        "result": { "type": ["string", "null"], "maxLength": 24000 },
+        "task": { "type": ["string", "null"], "maxLength": 12000, "description": "Read-only worker task; all external effects remain prohibited by runtime authority." }
+        ,"expectedSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$", "description": "Digest from a prior read_file result; verifies the file immediately before it is returned." }
       }
     }
   }

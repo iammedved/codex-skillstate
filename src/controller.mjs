@@ -3,19 +3,25 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseJson, sha256 } from './util.mjs';
 
-const forbidden = /"?(tool_calls?|command|file_changes?|apply_patch)"?\s*:/i;
-const forbiddenTypes = /^(command_execution|file_change|mcp_tool_call|tool_call|function_call|apply_patch)$/i;
+const forbiddenKey = /^(tool_calls?|command|file_changes?|apply_patch|mcp|function_call)$/i;
+const forbiddenType = /(?:tool|command|file.change|mcp|function.call|apply.patch|exec)/i;
+const safeItemTypes = new Set(['agent_message', 'message', 'reasoning', 'analysis', 'output_text']);
+const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_KILL_GRACE_MS = 2_000;
 
 export function rejectControllerJsonl(jsonl) {
   for (const line of jsonl.split(/\r?\n/)) {
     if (!line.trim()) continue;
     let event;
-    try { event = JSON.parse(line); } catch { if (forbidden.test(line)) throw new Error('controller used a forbidden tool/command/file-change call'); continue; }
-    const visit = value => {
+    try { event = JSON.parse(line); } catch { throw new Error('controller JSONL contains an invalid event'); }
+    if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('controller JSONL contains an invalid event');
+    if (typeof event.type === 'string' && event.type.startsWith('item.')) {
+      if (!event.item || typeof event.item !== 'object' || Array.isArray(event.item) || !safeItemTypes.has(event.item.type)) throw new Error('controller used an unrecognized or forbidden tool event');
+    }
+    const visit = (value, key) => {
       if (!value || typeof value !== 'object') return;
-      if (typeof value.type === 'string' && forbiddenTypes.test(value.type)) throw new Error('controller used a forbidden tool/command/file-change call');
-      if ('tool_call' in value || 'tool_calls' in value || 'command' in value || 'file_changes' in value) throw new Error('controller used a forbidden tool/command/file-change call');
-      for (const child of Object.values(value)) visit(child);
+      if (forbiddenKey.test(key || '') || (typeof value.type === 'string' && forbiddenType.test(value.type))) throw new Error('controller used a forbidden tool/command/file-change call');
+      for (const [childKey, child] of Object.entries(value)) visit(child, childKey);
     };
     visit(event);
   }
@@ -59,29 +65,52 @@ export function controllerResponseFromJsonl(jsonl) {
 }
 
 export function controllerPrompt({ state, observation, policy, mode }) {
-  return `You are a stateless controller. Return exactly one JSON object matching the output schema. Do not call tools, commands, or change files.\n\nCurrent state SHA-256: ${sha256(state)}\nCurrent state:\n${JSON.stringify(state)}\n\nObservation:\n${JSON.stringify(observation)}\n\nPolicy:\n${JSON.stringify(policy)}\n\nChoose exactly one allowed action: read_file, search, git_diff, snapshot, apply_patch, ask, finish${mode === 'hybrid' ? ', worker' : ''}. The action must be proportional and no external effects are ever allowed. state_patch is JSON Merge Patch: include all eight schema keys, copy each current array unchanged when it does not change, and use null only to delete nextAction or finalResult. The action object must include every schema field and set unused fields to null. baseStateSha256 must equal the supplied state hash.`;
+  const { receipts, ...currentState } = state;
+  currentState.receiptCount = receipts.length;
+  return `You are a stateless controller. Return exactly one JSON object matching the output schema. Do not call tools, commands, or change files.\n\nCurrent state SHA-256: ${sha256(state)}\nCurrent state (compact projection):\n${JSON.stringify(currentState)}\n\nObservation:\n${JSON.stringify(observation)}\n\nPolicy:\n${JSON.stringify(policy)}\n\nChoose exactly one allowed action: read_file, search, git_diff, snapshot, apply_patch, ask, finish${mode === 'hybrid' ? ', worker' : ''}. Inspect before apply_patch. After apply_patch, use git_diff, snapshot${mode === 'hybrid' ? ', or a read-only worker' : ''} before finish. The action must be proportional and no external effects are ever allowed. state_patch is JSON Merge Patch: include all eight schema keys, copy each current array unchanged when it does not change, and use null only to delete nextAction or finalResult. The action object must include every schema field and set unused fields to null. For read_file, expectedSha256 is a previously observed file digest or null. baseStateSha256 must equal the supplied full state hash.`;
 }
 
 export async function runFreshController({ codex = 'codex', workspace, schemaPath, prompt }) {
-  const args = ['exec', '--ephemeral', '--json', '--output-schema', schemaPath, '--sandbox', 'read-only', prompt];
+  const args = ['exec', '--ephemeral', '--json', '--ignore-user-config', '--ignore-rules', '--output-schema', schemaPath, '--sandbox', 'read-only', prompt];
   const result = await spawnCapture(codex, args, workspace);
-  if (result.code !== 0) throw new Error(`controller failed (${result.code}): ${(result.stdout + '\n' + result.stderr).slice(-6000)}`);
+  if (result.code !== 0) throw new Error(`controller failed (${result.code})`);
   const response = controllerResponseFromJsonl(result.stdout);
   Object.defineProperty(response, '_tokenMetrics', { value: tokenMetricsFromJsonl(result.stdout), enumerable: false });
   return response;
 }
 
-export async function spawnCapture(command, args, cwd, input) {
+export async function spawnCapture(command, args, cwd, input, { timeoutMs = DEFAULT_TIMEOUT_MS, killGraceMs = DEFAULT_KILL_GRACE_MS } = {}) {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || !Number.isInteger(killGraceMs) || killGraceMs < 0) throw new Error('child process timeout options are invalid');
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
-    const limit = 2 * 1024 * 1024; let stdout = '', stderr = '', bytes = 0, overflow;
+    const grouped = process.platform !== 'win32';
+    const child = spawn(command, args, { cwd, detached: grouped, stdio: ['pipe', 'pipe', 'pipe'] });
+    const limit = 2 * 1024 * 1024; let stdout = '', stderr = '', bytes = 0, overflow; let timedOut = false; let settled = false;
+    let killTimer;
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true; clearTimeout(timeout); if (!timedOut) clearTimeout(killTimer);
+      if (error) reject(error); else resolve(result);
+    };
     const collect = target => chunk => {
       bytes += chunk.length;
       if (bytes > limit) { overflow ||= new Error('child process output exceeded 2 MiB'); child.kill('SIGKILL'); return; }
       if (target === 'stdout') stdout += chunk; else stderr += chunk;
     };
+    const kill = signal => {
+      if (grouped && child.pid) {
+        try { process.kill(-child.pid, signal); return; }
+        catch (error) { if (error.code !== 'ESRCH') child.kill(signal); }
+      } else child.kill(signal);
+    };
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      kill('SIGTERM');
+      killTimer = setTimeout(() => kill('SIGKILL'), killGraceMs);
+    }, timeoutMs);
     child.stdout.on('data', collect('stdout')); child.stderr.on('data', collect('stderr'));
-    child.on('error', reject); child.on('close', code => overflow ? reject(overflow) : resolve({ code, stdout, stderr }));
+    child.on('error', error => finish(error));
+    child.on('close', code => finish(overflow || (timedOut ? new Error(`child process timed out after ${timeoutMs}ms`) : null), { code, stdout, stderr }));
+    child.stdin.on('error', () => {});
     child.stdin.end(input);
   });
 }
