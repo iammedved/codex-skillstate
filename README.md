@@ -9,7 +9,7 @@ It is not a claim that Codex App history is erased or that token use is reduced.
 After the public repository and tag exist:
 
 ```bash
-codex plugin marketplace add iammedved/codex-skillstate --ref v0.2.1-experimental
+codex plugin marketplace add iammedved/codex-skillstate --ref v0.2.2-experimental
 ```
 
 In Codex, install **Codex Skillstate** together with Pinmind, restart Codex App, then start a new chat. Skillstate has no autonomous prompt hook and cannot implicitly become a second controller. Pinmind decides when a task needs durable state and calls `skillstate checkpoint` at clean phase boundaries.
@@ -23,7 +23,7 @@ node scripts/install-personal.mjs --runtime-only
 skillstate --help
 ```
 
-For Codex App plugin users, `--runtime-only` is the correct global installation: it copies the release to `~/.local/share/codex-skillstate/0.2.1-experimental` and creates `~/.local/bin/skillstate`, without creating a second personal copy of the Skill. The installer recognizes any prior managed Skillstate marker, stages the new runtime before switching it in, and keeps replaced managed copies as timestamped backups.
+For Codex App plugin users, `--runtime-only` is the correct global installation: it copies the release to `~/.local/share/codex-skillstate/0.2.2-experimental` and creates `~/.local/bin/skillstate`, without creating a second personal copy of the Skill. The installer recognizes any prior managed Skillstate marker, stages the new runtime before switching it in, and keeps replaced managed copies as timestamped backups.
 
 Use `--with-skill` only when using the CLI without the Codex plugin:
 
@@ -41,13 +41,13 @@ To remove a legacy personal Skill installed with `--with-skill`, add `--with-ski
 
 ## When to use it
 
-Use `skillstate checkpoint --workspace <path> --pinmind-run <run-id>` when Pinmind selects durable state. Repeating an unchanged checkpoint is idempotent. `skillstate checkpoint-show` and `skillstate audit-verify` inspect the latest record and its audit chain. The legacy `hybrid` and `strict` controller modes are manual only and must not run beneath Pinmind.
+Use `skillstate checkpoint --workspace <path> --pinmind-run <run-id>` when Pinmind selects durable state. Repeating an unchanged checkpoint is idempotent. `skillstate checkpoint-show` and `skillstate checkpoint-verify` inspect the latest record and its audit chain. Checkpoint data stays under the workspace's ignored `.pinmind/skillstate/` directory, so ordinary workspace-write sandboxes need no home-directory permission. The legacy `hybrid` and `strict` controller modes are manual only and must not run beneath Pinmind.
 
 Skillstate is not an authorization mechanism. Version 0.2.x always refuses push, PR creation or merge, deploy, publish, messages, payments, production changes, and credential changes. An authorized external effect must happen as a separate reviewed step. An interrupted action is quarantined; inspect the working tree and confirm recovery before proceeding.
 
 ## Scope and caveats
 
-This `0.2.1-experimental` release uses only Node.js standard-library code. Its 51 automated tests exercise passive Pinmind checkpoints, no-progress protection, the internal protocol, packaging metadata, installer upgrades, and fake-Codex integration. A strict read-only smoke test previously passed on Codex CLI `0.147.0`; other host builds should repeat that smoke test before relying on the legacy controller for operational work.
+This `0.2.2-experimental` release uses only Node.js standard-library code. Its 51 automated tests exercise workspace-local passive Pinmind checkpoints, no-progress protection, the internal protocol, packaging metadata, installer upgrades, and fake-Codex integration. A strict read-only smoke test previously passed on Codex CLI `0.147.0`; other host builds should repeat that smoke test before relying on the legacy controller for operational work.
 
 Paused `0.1` runs are not migrated to protocol `0.2`; finish or recover them with the preserved `0.1.0-experimental` runtime before starting a new `0.2` run.
 

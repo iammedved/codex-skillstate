@@ -4,8 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { auditPath, verifyAudit } from '../src/audit.mjs';
-import { checkpointPinmind, showPinmindCheckpoint } from '../src/checkpoint.mjs';
+import { checkpointAuditPath, checkpointPinmind, showPinmindCheckpoint, verifyPinmindCheckpoint } from '../src/checkpoint.mjs';
 
 const cleanups = [];
 
@@ -14,7 +13,6 @@ async function fixture(runId = 'run-one') {
   const workspace = path.join(root, 'workspace');
   const run = path.join(workspace, '.pinmind', 'runs', runId);
   await mkdir(run, { recursive: true });
-  process.env.XDG_STATE_HOME = path.join(root, 'state');
   await writeFile(path.join(workspace, '.pinmind', 'active.json'), JSON.stringify({ runId }));
   await writeFile(path.join(run, 'state.json'), JSON.stringify({ runId, status: 'active', phase: 'execute', currentContractVersion: 1, updatedAt: '2026-09-01T00:00:00.000Z' }));
   cleanups.push(root);
@@ -22,7 +20,6 @@ async function fixture(runId = 'run-one') {
 }
 
 test.after(async () => {
-  delete process.env.XDG_STATE_HOME;
   await Promise.all(cleanups.map(root => rm(root, { recursive: true, force: true })));
 });
 
@@ -35,8 +32,8 @@ test('Pinmind checkpoint records bounded metadata and is idempotent', async () =
   assert.equal(first.unchanged, false);
   const second = await checkpointPinmind(workspace, runId);
   assert.equal(second.unchanged, true);
-  assert.equal((await readFile(auditPath(workspace), 'utf8')).trim().split('\n').length, 1);
-  assert.equal((await verifyAudit(workspace)).ok, true);
+  assert.equal((await readFile(checkpointAuditPath(workspace), 'utf8')).trim().split('\n').length, 1);
+  assert.equal((await verifyPinmindCheckpoint(workspace)).ok, true);
   await writeFile(path.join(run, 'state.json'), JSON.stringify({ runId, status: 'active', phase: 'verify', currentContractVersion: 1, updatedAt: '2026-09-01T00:01:00.000Z' }));
   assert.equal((await checkpointPinmind(workspace, runId)).phase, 'verify');
   assert.equal((await showPinmindCheckpoint(workspace)).phase, 'verify');

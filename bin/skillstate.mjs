@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { VERSION } from '../src/util.mjs';
 import { verifyAudit } from '../src/audit.mjs';
-import { checkpointPinmind, showPinmindCheckpoint } from '../src/checkpoint.mjs';
+import { checkpointPinmind, showPinmindCheckpoint, verifyPinmindCheckpoint } from '../src/checkpoint.mjs';
 import { doctor, loadState, recover, run } from '../src/runtime.mjs';
 
 const usage = `skillstate ${VERSION}
@@ -12,6 +12,7 @@ Usage:
   skillstate doctor [--workspace PATH] [--controller codex|pinmind] [--pinmind-path PATH]
   skillstate checkpoint --workspace PATH --pinmind-run RUN_ID
   skillstate checkpoint-show --workspace PATH
+  skillstate checkpoint-verify --workspace PATH
   skillstate run --workspace PATH (--task TEXT | --task-file FILE | --resume) [--mode strict|hybrid] [--sandbox read-only|workspace-write] [--controller codex|pinmind] [--pinmind-path PATH] [--max-steps N]
   skillstate show --workspace PATH
   skillstate audit-verify --workspace PATH
@@ -38,6 +39,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'doctor') return doctor({ workspace, controller: options.controller, pinmindPath: options.pinmindPath });
   if (command === 'checkpoint') return checkpointPinmind(workspace, options.pinmindRun);
   if (command === 'checkpoint-show') return showPinmindCheckpoint(workspace);
+  if (command === 'checkpoint-verify') return verifyPinmindCheckpoint(workspace);
   if (command === 'show') return loadState(workspace);
   if (command === 'audit-verify') return verifyAudit(workspace);
   if (command === 'recover') return recover(workspace, Boolean(options.confirm));

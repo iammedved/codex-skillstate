@@ -25,6 +25,7 @@ Do not replay an interrupted action automatically. Inspect the working tree and 
 ```bash
 skillstate checkpoint --workspace <path> --pinmind-run <run-id>
 skillstate checkpoint-show --workspace <path>
+skillstate checkpoint-verify --workspace <path>
 skillstate audit-verify --workspace <path>
 ```
 
