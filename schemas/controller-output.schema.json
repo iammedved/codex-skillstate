@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["baseStateSha256", "state_patch", "action"],
+  "additionalProperties": false,
+  "properties": {
+    "baseStateSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "state_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["facts", "decisions", "files", "verification", "blockers", "failedApproaches", "nextAction", "finalResult"],
+      "properties": {
+        "facts": { "type": ["array", "null"], "items": { "type": "string" }, "maxItems": 50 },
+        "decisions": { "type": ["array", "null"], "items": { "type": "string" }, "maxItems": 50 },
+        "files": { "type": ["array", "null"], "items": { "type": "string" }, "maxItems": 50 },
+        "verification": { "type": ["array", "null"], "items": { "type": "string" }, "maxItems": 50 },
+        "blockers": { "type": ["array", "null"], "items": { "type": "string" }, "maxItems": 50 },
+        "failedApproaches": { "type": ["array", "null"], "items": { "type": "string" }, "maxItems": 50 },
+        "nextAction": { "type": ["string", "null"] },
+        "finalResult": { "type": ["string", "null"] }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["type", "path", "query", "maxBytes", "patch", "question", "result", "task"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["read_file", "search", "git_diff", "snapshot", "apply_patch", "ask", "finish", "worker"] },
+        "path": { "type": ["string", "null"] },
+        "query": { "type": ["string", "null"] },
+        "maxBytes": { "type": ["integer", "null"], "minimum": 1, "maximum": 65536 },
+        "patch": { "type": ["string", "null"] },
+        "question": { "type": ["string", "null"] },
+        "result": { "type": ["string", "null"] },
+        "task": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

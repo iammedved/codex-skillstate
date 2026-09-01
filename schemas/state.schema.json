@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runId", "protocol", "revision", "authority", "lifecycle", "frozen", "objective", "facts", "decisions", "files", "verification", "blockers", "failedApproaches", "receipts"],
+  "properties": {
+    "runId": { "type": "string", "minLength": 1 },
+    "protocol": { "const": "codex-skillstate/0.1" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["localMutation", "externalEffects"],
+      "properties": {
+        "localMutation": { "type": "boolean" },
+        "externalEffects": { "const": false }
+      }
+    },
+    "lifecycle": { "enum": ["active", "awaiting_user", "finished", "paused"] },
+    "frozen": { "type": "array", "maxItems": 32 },
+    "objective": { "type": "string", "minLength": 1, "maxLength": 12000 },
+    "facts": { "$ref": "#/$defs/section" },
+    "decisions": { "$ref": "#/$defs/section" },
+    "files": { "$ref": "#/$defs/section" },
+    "verification": { "$ref": "#/$defs/section" },
+    "blockers": { "$ref": "#/$defs/section" },
+    "failedApproaches": { "$ref": "#/$defs/section" },
+    "nextAction": { "type": ["string", "null"], "maxLength": 24000 },
+    "finalResult": { "type": ["string", "null"], "maxLength": 24000 },
+    "receipts": { "type": "array", "maxItems": 100 }
+  },
+  "$defs": {
+    "section": { "type": "array", "items": { "type": "string", "maxLength": 4000 }, "maxItems": 50 }
+  }
+}

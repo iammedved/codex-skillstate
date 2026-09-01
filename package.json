@@ -1,0 +1,40 @@
+{
+  "name": "codex-skillstate",
+  "version": "0.1.0-experimental",
+  "description": "A bounded, stateless controller loop for Codex CLI.",
+  "type": "module",
+  "bin": {
+    "skillstate": "./bin/skillstate.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "verify": "node --check bin/skillstate.mjs && node --test test/*.test.mjs",
+    "install:personal": "node scripts/install-personal.mjs",
+    "uninstall:personal": "node scripts/uninstall-personal.mjs"
+  },
+  "files": [
+    "bin",
+    "schemas",
+    "src",
+    "skills",
+    "scripts",
+    ".codex-plugin",
+    "README.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "codex",
+    "skill",
+    "state",
+    "controller"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iammedved/codex-skillstate.git"
+  }
+}
