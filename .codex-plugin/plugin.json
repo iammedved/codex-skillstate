@@ -1,7 +1,7 @@
 {
   "name": "codex-skillstate",
-  "version": "0.2.0-experimental",
-  "description": "External fresh-context runtime for bounded, auditable long-running Codex tasks.",
+  "version": "0.2.1-experimental",
+  "description": "Passive bounded checkpoints for long tasks controlled by Pinmind.",
   "author": {
     "name": "Codex Skillstate"
   },
@@ -12,15 +12,15 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Skillstate",
-    "shortDescription": "Fresh-context runtime for bounded long tasks",
-    "longDescription": "Experimental Agent Skill that routes long tasks through a local fresh-context runtime with bounded state and audit receipts.",
+    "shortDescription": "Passive checkpoints for Pinmind tasks",
+    "longDescription": "Experimental state layer that records bounded, hashed checkpoints for a Pinmind-controlled task without becoming a second controller.",
     "developerName": "Codex Skillstate",
     "category": "Productivity",
     "capabilities": ["Analysis", "Write", "Verification"],
     "defaultPrompt": [
-      "Use Skillstate hybrid mode for this multi-step local coding task.",
-      "Run this long task in strict mode and stop at any authority boundary.",
-      "Inspect the current Skillstate run and report verified blockers."
+      "Record a passive checkpoint for the current Pinmind run.",
+      "Show the latest Pinmind checkpoint without changing the task.",
+      "Verify the local Skillstate audit chain for this Pinmind run."
     ]
   }
 }

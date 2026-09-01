@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFile, spawnSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { lstat, mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,52 +8,27 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { VERSION } from '../src/util.mjs';
-import { hookOutputForPrompt } from '../hooks/skillstate-autostart.mjs';
-
 const execFileAsync = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const hook = path.join(root, 'hooks', 'skillstate-autostart.mjs');
 const install = path.join(root, 'scripts', 'install-personal.mjs');
 
-test('release metadata uses one 0.2.0-experimental version', async () => {
+test('release metadata uses one 0.2.1-experimental version', async () => {
   const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
   const plugin = JSON.parse(await readFile(path.join(root, '.codex-plugin', 'plugin.json'), 'utf8'));
-  assert.equal(VERSION, '0.2.0-experimental');
+  assert.equal(VERSION, '0.2.1-experimental');
   assert.equal(packageJson.version, VERSION);
   assert.equal(plugin.version, VERSION);
 });
 
-test('plugin registers a bounded UserPromptSubmit hook', async () => {
-  const config = JSON.parse(await readFile(path.join(root, 'hooks', 'hooks.json'), 'utf8'));
-  const registration = config.hooks?.UserPromptSubmit?.[0]?.hooks?.[0];
-  assert.equal(registration?.type, 'command');
-  assert.match(registration?.command ?? '', /skillstate-autostart\.mjs/);
-  assert.ok(registration?.timeout > 0 && registration.timeout <= 5);
+test('plugin has no autonomous workflow hook', async () => {
+  await assert.rejects(readFile(path.join(root, 'hooks', 'hooks.json')), /ENOENT/);
+  assert.equal(JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).files.includes('hooks'), false);
 });
 
-test('hook stays silent for short prompts and only nudges long multi-stage work', async () => {
-  assert.deepEqual(hookOutputForPrompt('Исправь опечатку в README.'), {});
-  const result = hookOutputForPrompt('Проведи аудит репозитория, исправь найденные ошибки, добавь тесты и подготовь итоговый отчёт.');
-  const context = result.hookSpecificOutput?.additionalContext ?? '';
-  assert.equal(result.hookSpecificOutput?.hookEventName, 'UserPromptSubmit');
-  assert.match(context, /\$skillstate-runtime/);
-  assert.match(context, /Automatically use/);
-  assert.ok(hookOutputForPrompt(`Сделай ${'подробный план и отчёт '.repeat(18)}`).hookSpecificOutput);
-});
-
-test('hook CLI reads Codex JSON stdin and emits routing context', () => {
-  const child = spawnSync(process.execPath, [hook], {
-    encoding: 'utf8',
-    input: JSON.stringify({ prompt: 'Сначала проанализируй проект, затем реализуй исправления и проверь всё тестами.' })
-  });
-  assert.equal(child.status, 0, child.stderr);
-  assert.match(JSON.parse(child.stdout).hookSpecificOutput.additionalContext, /\$skillstate-runtime/);
-});
-
-test('skill permits implicit invocation', async () => {
+test('skill cannot implicitly become a second controller', async () => {
   const agent = await readFile(path.join(root, 'skills', 'skillstate-runtime', 'agents', 'openai.yaml'), 'utf8');
-  assert.match(agent, /allow_implicit_invocation:\s*true/);
-  assert.match(agent, /\$skillstate-runtime/);
+  assert.match(agent, /allow_implicit_invocation:\s*false/);
+  assert.match(agent, /Pinmind/);
 });
 
 test('runtime-only install moves an old managed personal skill to a recoverable backup', async () => {
