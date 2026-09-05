@@ -8,6 +8,7 @@ import { applyStatePatch, createState, validateState } from './state.mjs';
 import { controllerPrompt, controllerSchemaPath, runFreshController } from './controller.mjs';
 import { sha256 } from './util.mjs';
 import { assertFrozen, pinmindAdapter } from './pinmind.mjs';
+import { doctorPinmindCheckpoint } from './checkpoint.mjs';
 
 export const statePath = workspace => path.join(runDir(workspace), 'state.json');
 export const pendingPath = workspace => path.join(stateRoot(), `${sha256(path.resolve(workspace)).slice(0, 24)}.pending-commit.json`);
@@ -195,12 +196,14 @@ async function pauseFailedAction({ workspace, state, action, result, started, re
   return receipt;
 }
 
-export async function doctor({ workspace = process.cwd(), controller = 'codex', pinmindPath } = {}) {
+export async function doctor({ workspace = process.cwd(), controller, pinmindPath, pinmindRun } = {}) {
+  if (!controller) return doctorPinmindCheckpoint({ workspace, runId: pinmindRun });
+  if (!['codex', 'pinmind'].includes(controller)) throw new Error('invalid controller');
   const checks = [{ name: 'workspace', ok: true, value: path.resolve(workspace) }];
   try { const probe = await import('./controller.mjs').then(({ spawnCapture }) => spawnCapture('codex', ['--version'], workspace)); checks.push({ name: 'codex', ok: probe.code === 0, code: probe.code, stderrSha256: probe.stderr ? sha256(probe.stderr) : null }); }
   catch { checks.push({ name: 'codex', ok: false, detail: 'probe failed' }); }
   if (controller === 'pinmind') try { const route = await pinmindAdapter({ pinmindPath, task: 'diagnostic' }); checks.push({ name: 'pinmind', ok: true, route: route.route }); } catch { checks.push({ name: 'pinmind', ok: false, detail: 'route unavailable' }); }
-  return { ok: checks.every(check => check.ok), checks };
+  return { ok: checks.every(check => check.ok), mode: 'controller-diagnostic', checks };
 }
 
 export async function run(options) {

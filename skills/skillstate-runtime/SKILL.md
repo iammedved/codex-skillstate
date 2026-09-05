@@ -5,7 +5,7 @@ description: "Record passive, bounded checkpoints for a Pinmind-controlled long 
 
 # Skillstate Runtime
 
-Pinmind is the sole workflow controller. When Pinmind selects durable state, start with `skillstate doctor --workspace <path>`, then record the already-validated Pinmind state with `skillstate checkpoint --workspace <path> --pinmind-run <run-id>` at clean phase boundaries. Skillstate stores hashes and bounded metadata; it does not route the task, decide the next action, or spawn a second controller.
+Pinmind is the sole workflow controller. When Pinmind selects durable state, start with `skillstate doctor --workspace <path> --pinmind-run <run-id>`, then record the already-validated Pinmind state with `skillstate checkpoint --workspace <path> --pinmind-run <run-id>` at clean phase boundaries. Skillstate stores hashes and bounded metadata; it does not route the task, decide the next action, or spawn a second controller.
 
 ## Modes
 
@@ -26,7 +26,8 @@ Do not replay an interrupted action automatically. Inspect the working tree and 
 skillstate checkpoint --workspace <path> --pinmind-run <run-id>
 skillstate checkpoint-show --workspace <path>
 skillstate checkpoint-verify --workspace <path>
+skillstate checkpoint-recover --workspace <path>
 skillstate audit-verify --workspace <path>
 ```
 
-The legacy `skillstate run` controller remains experimental and manual; never use it inside a Pinmind-controlled task. A checkpoint is local evidence, not proof that a host action occurred unless an authoritative receipt says so.
+`checkpoint-verify` distinguishes a current record, valid historical state, missing data, a foreign run, and corruption. If it reports an interrupted metadata transaction, inspect it and use `checkpoint-recover` only for the matching current Pinmind run. The legacy `skillstate run` controller remains experimental and manual; never use it inside a Pinmind-controlled task. A checkpoint is local evidence, not proof that a host action occurred unless an authoritative receipt says so.
